@@ -47,7 +47,7 @@ Copy `.env.example` to `.env`. Local development needs none of it.
 | --- | --- | --- |
 | `ADMIN_PASSWORD` | *(empty)* | Empty means the admin is unlocked — fine locally. **Required before this is reachable from the internet.** |
 | `AUTH_SALT` | `the-wedding-sridha` | Changing it signs everyone out. |
-| `DATABASE_URL` | *(unset)* | Postgres. When set, it is used instead of SQLite. |
+| `DATABASE_URL` | *(unset)* | Postgres. When set, it is used instead of SQLite. `POSTGRES_URL`, `NEON_DATABASE_URL`, `POSTGRES_PRISMA_URL` and the un-pooled variants are accepted too, because that is what the hosts' storage integrations actually set. |
 | `BLOB_READ_WRITE_TOKEN` | *(unset)* | Vercel Blob. When set, photos go there instead of the local disk. |
 | `DB_PATH` | `./data/quotations.db` | Local SQLite file. Ignored when `DATABASE_URL` is set. |
 | `UPLOAD_DIR` | `./data/uploads` | Local photo directory. Ignored when Blob is configured. |
@@ -74,6 +74,16 @@ that happen.
 
 The admin page states which database and photo storage it is actually using, so
 a misconfigured deploy is visible in one glance rather than discovered later.
+If something is missing it renders a page naming it instead of a blank 500, and
+`/api/health` (behind the admin session) reports exactly what was found:
+
+```json
+{ "database": { "kind": "postgres", "configuredVia": "POSTGRES_URL", "reachable": true },
+  "uploads": "blob", "ok": true }
+```
+
+**Environment variables only take effect on a new deployment** — after
+connecting storage, redeploy.
 
 ### Anywhere with a real disk (Render, Fly, a VPS)
 
@@ -131,9 +141,13 @@ npm run test:all      # everything, with a build in between
   the Postgres run puts a real socket server in front of PGlite so the `pg`
   driver and the production SQL are genuinely used.
 - **Deployment safety** (`scripts/e2e-serverless.mjs`) — simulates a serverless
-  host and asserts that a missing `DATABASE_URL` refuses to serve and never
-  writes a SQLite file, and that a missing Blob token disables uploads with a
-  useful message while everything else keeps working.
+  host and asserts that with no database the admin renders a page naming what
+  to add, the API answers 503 rather than crashing, a client sees a calm
+  message instead of setup instructions, and no SQLite file is written. Then
+  connects Postgres through `POSTGRES_URL` alone — not `DATABASE_URL` — to
+  prove the host integrations' variable names work, and checks that a missing
+  Blob token disables uploads with a useful message while everything else keeps
+  working.
 - **Browser** (`scripts/e2e-browser.mjs`) — signs in, creates and edits a
   quotation, watches the live preview track the form, uploads a photograph,
   then opens the share link **in a separate browser context with no cookies**

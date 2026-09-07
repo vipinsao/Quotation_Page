@@ -8,14 +8,53 @@ export function isServerless(): boolean {
   return Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
 }
 
+/**
+ * Connecting a Postgres database through a host's storage tab does not always
+ * set DATABASE_URL — Vercel's Neon and Postgres integrations set POSTGRES_URL
+ * and friends. Accepting the usual names means "connect the database, redeploy"
+ * is genuinely all there is to it. Pooled URLs come first: serverless opens a
+ * connection per instance.
+ */
+export const DATABASE_ENV_VARS = [
+  "DATABASE_URL",
+  "POSTGRES_URL",
+  "NEON_DATABASE_URL",
+  "DATABASE_POSTGRES_URL",
+  "POSTGRES_PRISMA_URL",
+  "DATABASE_URL_UNPOOLED",
+  "POSTGRES_URL_NON_POOLING",
+] as const;
+
+/** Which variable the connection string came from, for diagnostics. */
+export function databaseUrlSource(): (typeof DATABASE_ENV_VARS)[number] | null {
+  for (const key of DATABASE_ENV_VARS) {
+    if (process.env[key]?.trim()) return key;
+  }
+  return null;
+}
+
+export function databaseUrl(): string | null {
+  const key = databaseUrlSource();
+  return key ? process.env[key]!.trim() : null;
+}
+
 export function storeKind(): "sqlite" | "postgres" {
-  return process.env.DATABASE_URL ? "postgres" : "sqlite";
+  return databaseUrl() ? "postgres" : "sqlite";
+}
+
+/** Thrown when the app cannot safely store anything. Rendered, not swallowed. */
+export class StorageNotConfiguredError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "StorageNotConfiguredError";
+  }
 }
 
 async function build(): Promise<QuotationStore> {
-  const databaseUrl = process.env.DATABASE_URL;
+  const url = databaseUrl();
 
-  if (databaseUrl) {
+  if (url) {
+    const databaseUrl = url;
     const { Pool } = await import("pg");
     const pool = new Pool({
       connectionString: databaseUrl,
@@ -32,10 +71,9 @@ async function build(): Promise<QuotationStore> {
   if (isServerless()) {
     // Falling back to SQLite here would appear to work and then silently drop
     // every quotation, which is worse than refusing to start.
-    throw new Error(
-      "DATABASE_URL is not set. This deployment has no persistent disk, so SQLite " +
-        "cannot be used — add a Postgres connection string (Neon, Vercel Postgres, " +
-        "Supabase) to the project's environment variables.",
+    throw new StorageNotConfiguredError(
+      "No Postgres connection string found. This deployment has no persistent disk, " +
+        "so SQLite cannot be used. Checked: " + DATABASE_ENV_VARS.join(", ") + ".",
     );
   }
 
