@@ -1,26 +1,137 @@
 @import "tailwindcss";
 
+/* ---------------------------------------------------------------
+   Palette lifted from the studio's existing PDF: deep botanical
+   green, warm paper, a single muted gold accent. Nothing else.
+   --------------------------------------------------------------- */
+@theme {
+  --color-ink: #14231b;
+  --color-forest: #1e3a2b;
+  --color-forest-soft: #2c5040;
+  --color-sage: #7c9585;
+  --color-sage-pale: #dfe7e0;
+  --color-gold: #a8814d;
+  --color-gold-pale: #e8dcc8;
+  --color-cream: #fbf8f3;
+  --color-paper: #ffffff;
+  --color-line: #e7e1d6;
+  --color-body: #23231f;
+  --color-muted: #6f6a60;
+
+  --font-display: var(--font-display-serif), "Cormorant Garamond", Georgia, "Times New Roman", serif;
+  --font-sans: var(--font-body-sans), ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  color-scheme: light;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  scroll-behavior: smooth;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--color-cream);
+  color: var(--color-body);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Cormorant ships old-style figures by default: "1" reads as a Roman "I" and
+   the price sits below the cap line. Anything numeric the client has to read
+   at a glance gets full-height, evenly-spaced figures instead. */
+.numerals {
+  font-variant-numeric: lining-nums proportional-nums;
+  font-feature-settings: "lnum" 1, "onum" 0;
+}
+
+/* Small-caps label used above every section heading. */
+.eyebrow {
+  font-size: 0.6875rem;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  font-weight: 600;
+  color: var(--color-gold);
+}
+
+/* Hairline rule with a centred diamond — the one decorative flourish. */
+.rule {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  color: var(--color-line);
+}
+.rule::before,
+.rule::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: currentColor;
+}
+
+.quote-body p + p {
+  margin-top: 1rem;
+}
+
+/* ---------------------------------------------------------------
+   Print / Save-as-PDF. The client page is a document first, so it
+   has to survive Ctrl+P without the browser inventing a layout.
+   --------------------------------------------------------------- */
+@media print {
+  @page {
+    size: A4;
+    margin: 14mm 12mm;
+  }
+
+  html, body {
+    background: #ffffff !important;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  .print-break-before {
+    break-before: page;
+  }
+
+  .print-avoid-break {
+    break-inside: avoid;
+  }
+
+  /* Force backgrounds/photos to actually ink. */
+  .print-exact {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* On screen the page breathes; on paper that whitespace is wasted pages. */
+  [data-section] {
+    padding-top: 1.75rem !important;
+    padding-bottom: 1.75rem !important;
+  }
+
+  [data-hero] {
+    padding-top: 1.5rem !important;
+    padding-bottom: 2rem !important;
+  }
+
+  [data-hero-body] {
+    margin-top: 3rem !important;
+  }
+
+  a[href^="http"]::after,
+  a[href^="mailto"]::after,
+  a[href^="tel"]::after {
+    content: "";
+  }
 }

@@ -39,3 +39,13 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# app data
+/data
+/public/uploads/*
+!/public/uploads/.gitkeep
+.env
+.env.local
+
+# ...but the documented example is meant to be committed
+!.env.example
