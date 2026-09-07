@@ -58,7 +58,7 @@ export function SetupRequired({
           {checked.length > 0 && (
             <>
               <p className="mt-4 text-[0.7rem] font-semibold tracking-[0.1em] uppercase text-muted">
-                Any one of these variables works
+                Preferred names — but any variable holding a postgres:// URL is used
               </p>
               <ul className="mt-2 flex flex-wrap gap-2">
                 {checked.map((name) => (

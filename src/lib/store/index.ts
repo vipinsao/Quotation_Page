@@ -25,17 +25,45 @@ export const DATABASE_ENV_VARS = [
   "POSTGRES_URL_NON_POOLING",
 ] as const;
 
-/** Which variable the connection string came from, for diagnostics. */
-export function databaseUrlSource(): (typeof DATABASE_ENV_VARS)[number] | null {
+const POSTGRES_URL_PATTERN = /^postgres(ql)?:\/\//i;
+
+/** Direct/unpooled endpoints are a poor fit for serverless; prefer pooled ones. */
+const UNPOOLED_HINT = /(UNPOOLED|NON_POOLING|NONPOOLING|DIRECT)/i;
+
+/**
+ * Storage integrations let you choose the variable prefix, so the name is not
+ * something this app can rely on — connecting Neon through Vercel can produce
+ * STORAGE_URL just as easily as DATABASE_URL. Known names win, and anything
+ * else in the environment holding a postgres:// URL is picked up as a
+ * fallback, so "connect the database and redeploy" is genuinely all there is.
+ */
+export function databaseUrlSource(): string | null {
   for (const key of DATABASE_ENV_VARS) {
-    if (process.env[key]?.trim()) return key;
+    const value = process.env[key]?.trim();
+    if (value && POSTGRES_URL_PATTERN.test(value)) return key;
   }
-  return null;
+
+  const discovered = Object.keys(process.env)
+    .filter((key) => POSTGRES_URL_PATTERN.test(process.env[key]?.trim() ?? ""))
+    .sort((a, b) => {
+      const pooled = Number(UNPOOLED_HINT.test(a)) - Number(UNPOOLED_HINT.test(b));
+      return pooled !== 0 ? pooled : a.localeCompare(b);
+    });
+
+  return discovered[0] ?? null;
 }
 
 export function databaseUrl(): string | null {
   const key = databaseUrlSource();
-  return key ? process.env[key]!.trim() : null;
+  const value = key ? process.env[key]?.trim() : null;
+  return value || null;
+}
+
+/** Every environment variable currently holding a Postgres URL, for diagnostics. */
+export function databaseUrlCandidates(): string[] {
+  return Object.keys(process.env)
+    .filter((key) => POSTGRES_URL_PATTERN.test(process.env[key]?.trim() ?? ""))
+    .sort();
 }
 
 export function storeKind(): "sqlite" | "postgres" {

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { isAuthenticated } from "@/lib/auth";
-import { getStore, databaseUrlSource, isServerless, storeKind, DATABASE_ENV_VARS } from "@/lib/store";
+import { getStore, databaseUrlCandidates, databaseUrlSource, isServerless, storeKind, DATABASE_ENV_VARS } from "@/lib/store";
 import { uploadBackend } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
@@ -28,7 +28,9 @@ export async function GET() {
     database: {
       kind: storeKind(),
       configuredVia: databaseUrlSource(),
-      accepts: DATABASE_ENV_VARS,
+      // Names only — never the connection strings themselves.
+      found: databaseUrlCandidates(),
+      preferredNames: DATABASE_ENV_VARS,
       reachable: databaseReachable,
       error: databaseError,
     },

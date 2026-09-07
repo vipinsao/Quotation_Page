@@ -92,7 +92,7 @@ await withServer({ port: 3211, env: {} }, async ({ base, workdir }) => {
 });
 
 /* ------------------- 2. connected through POSTGRES_URL, with no Blob store */
-console.log("\nConnected via POSTGRES_URL, no Blob store");
+console.log("\nConnected via an unrecognised variable name, no Blob store");
 const { PGlite } = await import("@electric-sql/pglite");
 const { PGLiteSocketServer } = await import("@electric-sql/pglite-socket");
 const pglite = new PGlite();
@@ -104,14 +104,14 @@ try {
   await withServer(
     {
       port: 3212,
-      // Deliberately NOT DATABASE_URL: this is the variable Vercel's Postgres
-      // and Neon integrations actually set.
-      env: { POSTGRES_URL: "postgres://postgres:postgres@127.0.0.1:5434/postgres?sslmode=disable" },
+      // Deliberately an unknown prefix — this is what Neon's Vercel integration
+      // produces when the prefix is left as STORAGE.
+      env: { STORAGE_URL: "postgres://postgres:postgres@127.0.0.1:5434/postgres?sslmode=disable" },
     },
     async ({ base }) => {
       const health = await (await fetch(`${base}/api/health`)).json();
-      check("the app picks up POSTGRES_URL without DATABASE_URL being set",
-        health.database.configuredVia === "POSTGRES_URL", JSON.stringify(health.database));
+      check("the app finds a Postgres URL under a name it has never seen",
+        health.database.configuredVia === "STORAGE_URL", JSON.stringify(health.database));
       check("and reaches the database", health.database.reachable === true, health.database.error || "");
 
       const created = await fetch(`${base}/api/quotations`, {
