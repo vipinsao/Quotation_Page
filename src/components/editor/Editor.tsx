@@ -95,9 +95,16 @@ export function Editor({ initial }: { initial: Quotation }) {
     return () => window.removeEventListener("beforeunload", warn);
   }, [saveState]);
 
+  // Read the origin only after mounting. Branching on `typeof window` during
+  // render makes the server and the first client render disagree, which React
+  // reports as a hydration error and recovers from by throwing the server HTML
+  // away.
+  const [origin, setOrigin] = useState("");
+  useEffect(() => setOrigin(window.location.origin), []);
+
   const shareUrl = useMemo(
-    () => (typeof window === "undefined" ? `/q/${slugDraft}` : `${window.location.origin}/q/${slugDraft}`),
-    [slugDraft],
+    () => `${origin}/q/${slugDraft}`,
+    [origin, slugDraft],
   );
 
   async function copyLink() {

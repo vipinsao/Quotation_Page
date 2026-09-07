@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params;
-  const quotation = getQuotationBySlug(slug);
+  const quotation = await getQuotationBySlug(slug);
   if (!quotation) return { title: "Quotation not found" };
 
   const name = coupleName(quotation);
@@ -24,7 +24,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 export default async function ClientQuotationPage({ params }: Props) {
   const { slug } = await params;
-  const quotation = getQuotationBySlug(slug);
+  const quotation = await getQuotationBySlug(slug);
   if (!quotation) notFound();
 
   return (

@@ -1,16 +1,41 @@
 /**
  * End-to-end check against a real `next start` server:
  * auth, create, public render, edit, itemised pricing, slug change,
- * uploads, and delete. Run with `npm run test:e2e`.
+ * uploads, and delete.
+ *
+ *   npm run test:e2e      — against SQLite (how you develop)
+ *   npm run test:e2e:pg   — against Postgres over the wire (how it deploys)
+ *
+ * The Postgres run uses PGlite behind a real socket server, so the `pg` driver
+ * and the production SQL are both genuinely exercised.
  */
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-const PORT = Number(process.env.E2E_PORT || 3111);
+const BACKEND = (process.argv.find((a) => a.startsWith("--backend="))?.split("=")[1] || "sqlite");
+const PORT = Number(process.env.E2E_PORT || (BACKEND === "postgres" ? 3112 : 3111));
+const PG_PORT = Number(process.env.E2E_PG_PORT || 5433);
 const BASE = `http://127.0.0.1:${PORT}`;
 const PASSWORD = "e2e-secret";
+
+console.log(`\nRunning end-to-end checks against ${BACKEND}.`);
+
+// Postgres run: stand up a real wire-protocol server in front of PGlite.
+let pglite = null;
+let pgServer = null;
+let databaseUrl = "";
+
+if (BACKEND === "postgres") {
+  const { PGlite } = await import("@electric-sql/pglite");
+  const { PGLiteSocketServer } = await import("@electric-sql/pglite-socket");
+  pglite = new PGlite();
+  await pglite.waitReady;
+  pgServer = new PGLiteSocketServer({ db: pglite, port: PG_PORT, host: "127.0.0.1" });
+  await pgServer.start();
+  databaseUrl = `postgres://postgres:postgres@127.0.0.1:${PG_PORT}/postgres?sslmode=disable`;
+}
 
 const workdir = fs.mkdtempSync(path.join(os.tmpdir(), "wq-e2e-"));
 const results = [];
@@ -83,6 +108,7 @@ const server = spawn("npm", ["run", "start", "--", "--port", String(PORT)], {
     AUTH_SALT: "e2e",
     DB_PATH: path.join(workdir, "e2e.db"),
     UPLOAD_DIR: path.join(workdir, "uploads"),
+    ...(databaseUrl ? { DATABASE_URL: databaseUrl } : {}),
   },
   stdio: ["ignore", "pipe", "pipe"],
 });
@@ -102,6 +128,8 @@ function shutdown() {
     server.kill("SIGKILL");
   }
   fs.rmSync(workdir, { recursive: true, force: true });
+  if (pgServer) pgServer.stop().catch(() => {});
+  if (pglite) pglite.close().catch(() => {});
 }
 
 process.on("exit", shutdown);
@@ -333,7 +361,7 @@ try {
 shutdown();
 
 const failed = results.filter((r) => !r.ok);
-console.log(`\n${results.length - failed.length}/${results.length} checks passed.`);
+console.log(`\n${results.length - failed.length}/${results.length} checks passed on ${BACKEND}.`);
 if (failed.length > 0) {
   console.error(serverLog.slice(-2000));
   process.exit(1);

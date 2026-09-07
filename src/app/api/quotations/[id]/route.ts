@@ -11,7 +11,7 @@ export async function GET(_request: Request, { params }: Ctx) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const { id } = await params;
-  const quotation = getQuotationById(id);
+  const quotation = await getQuotationById(id);
   if (!quotation) return NextResponse.json({ error: "Not found" }, { status: 404 });
   return NextResponse.json({ quotation });
 }
@@ -22,7 +22,7 @@ export async function PUT(request: Request, { params }: Ctx) {
   }
 
   const { id } = await params;
-  const existing = getQuotationById(id);
+  const existing = await getQuotationById(id);
   if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
@@ -35,10 +35,10 @@ export async function PUT(request: Request, { params }: Ctx) {
   if (typeof body.slug === "string" && body.slug.trim()) {
     const candidate = sanitizeSlug(body.slug, merged.client.name);
     slug = candidate;
-    while (slugExists(slug, id)) slug = `${candidate}-${newToken()}`;
+    while (await slugExists(slug, id)) slug = `${candidate}-${newToken()}`;
   }
 
-  const saved = updateQuotation({ ...merged, id, slug });
+  const saved = await updateQuotation({ ...merged, id, slug });
   return NextResponse.json({ quotation: saved });
 }
 
@@ -47,6 +47,6 @@ export async function DELETE(_request: Request, { params }: Ctx) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const { id } = await params;
-  if (!deleteQuotation(id)) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  if (!(await deleteQuotation(id))) return NextResponse.json({ error: "Not found" }, { status: 404 });
   return NextResponse.json({ ok: true });
 }

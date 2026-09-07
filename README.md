@@ -41,18 +41,44 @@ npm start
 
 ## Configuration
 
-Copy `.env.example` to `.env`.
+Copy `.env.example` to `.env`. Local development needs none of it.
 
 | Variable | Default | Notes |
 | --- | --- | --- |
-| `ADMIN_PASSWORD` | *(empty)* | Empty means the admin is unlocked — fine locally. **Set it before putting this on the internet.** |
-| `AUTH_SALT` | `the-wedding-sridha` | Change it; signing out everyone is as simple as changing it again. |
-| `DB_PATH` | `./data/quotations.db` | SQLite file. |
-| `UPLOAD_DIR` | `./data/uploads` | Uploaded photographs. |
+| `ADMIN_PASSWORD` | *(empty)* | Empty means the admin is unlocked — fine locally. **Required before this is reachable from the internet.** |
+| `AUTH_SALT` | `the-wedding-sridha` | Changing it signs everyone out. |
+| `DATABASE_URL` | *(unset)* | Postgres. When set, it is used instead of SQLite. |
+| `BLOB_READ_WRITE_TOKEN` | *(unset)* | Vercel Blob. When set, photos go there instead of the local disk. |
+| `DB_PATH` | `./data/quotations.db` | Local SQLite file. Ignored when `DATABASE_URL` is set. |
+| `UPLOAD_DIR` | `./data/uploads` | Local photo directory. Ignored when Blob is configured. |
 
-Deploying to a host with ephemeral disk (Render, Fly, Railway): mount a
-persistent disk and point `DB_PATH` and `UPLOAD_DIR` inside it, or the
-quotations and photographs disappear on the next deploy.
+## Deploying to Vercel
+
+Vercel functions have no persistent disk, so SQLite and local file uploads
+cannot be used there — a deployment without the two services below would appear
+to work and then lose every quotation. The app refuses to start rather than let
+that happen.
+
+1. **Import the repo** at [vercel.com/new](https://vercel.com/new). No build
+   settings to change.
+2. **Add Postgres.** In the project, Storage → create a Neon Postgres database
+   and connect it. That sets `DATABASE_URL` for you. If you bring your own,
+   use the **pooled** connection string. The table is created on first use —
+   there is no migration step.
+3. **Add Blob.** Storage → create a Blob store and connect it. That sets
+   `BLOB_READ_WRITE_TOKEN`. Skip this and quotations still work, but the upload
+   button is disabled and you paste image URLs instead — the admin says so.
+4. **Set `ADMIN_PASSWORD`** and `AUTH_SALT` in Settings → Environment
+   Variables, for all environments.
+5. Redeploy.
+
+The admin page states which database and photo storage it is actually using, so
+a misconfigured deploy is visible in one glance rather than discovered later.
+
+### Anywhere with a real disk (Render, Fly, a VPS)
+
+No Postgres or Blob needed. Mount a persistent disk and point `DB_PATH` and
+`UPLOAD_DIR` inside it.
 
 ## How it fits together
 
@@ -69,6 +95,14 @@ quotations and photographs disappear on the next deploy.
   sums to the total exactly.
 - **Indian numbering.** `lib/money.ts` writes amounts in lakh/crore, the way the
   original PDF does.
+- **One storage interface, two backends.** `lib/store` defines what the app
+  needs from persistence and implements it twice — SQLite for local work,
+  Postgres for deployment. The same contract test suite runs against both, so a
+  difference between them cannot become a production-only bug.
+- **Misconfiguration fails loudly.** On a serverless host with no
+  `DATABASE_URL`, the app throws instead of falling back to a database that
+  will be deleted. Uploads with nowhere durable to go return a 501 that names
+  the missing variable.
 - **Uploads live outside `public/`.** Next only serves `public/` as it was at
   build time, so anything uploaded afterwards would 404 in production. Files go
   to `UPLOAD_DIR` and are streamed by `/uploads/[...path]`, which accepts only
@@ -80,18 +114,37 @@ quotations and photographs disappear on the next deploy.
 ## Tests
 
 ```bash
-npm test             # 30 unit tests — money, normalization, derived values
-npm run test:e2e     # 50 checks against a real built server
-npm run test:all     # both, with a build in between
+npm test              # 52 unit tests, incl. the store contract against both backends
+npm run test:e2e      # 50 checks against a built server on SQLite
+npm run test:e2e:pg   # the same 50 checks over the Postgres wire protocol
+npm run test:browser  # 34 browser checks, two devices, Postgres
+npm run test:all      # everything, with a build in between
 ```
 
-The end-to-end run boots `next start` on a scratch database and exercises
-access control, creating, the public render, editing, itemised pricing,
-changing a share link, uploads (including path-traversal attempts) and delete.
+- **Unit** — Indian lakh/crore wording, rupee formatting, percentage splits,
+  input coercion, and a store contract suite run identically against SQLite and
+  a real Postgres (PGlite in-process), because the app is developed on one and
+  deployed on the other.
+- **End-to-end** — boots `next start` and exercises access control, creating,
+  the public render, editing, itemised pricing, share-link changes, uploads
+  including path-traversal attempts, and delete. Runs against both backends;
+  the Postgres run puts a real socket server in front of PGlite so the `pg`
+  driver and the production SQL are genuinely used.
+- **Deployment safety** (`scripts/e2e-serverless.mjs`) — simulates a serverless
+  host and asserts that a missing `DATABASE_URL` refuses to serve and never
+  writes a SQLite file, and that a missing Blob token disables uploads with a
+  useful message while everything else keeps working.
+- **Browser** (`scripts/e2e-browser.mjs`) — signs in, creates and edits a
+  quotation, watches the live preview track the form, uploads a photograph,
+  then opens the share link **in a separate browser context with no cookies**
+  and checks that this second device sees exactly what the first one wrote,
+  including after a later edit. Also covers the lightbox, the WhatsApp and call
+  links, the phone-sized editor tabs, horizontal overflow, and asserts no
+  JavaScript errors occurred.
 
 ```bash
 npm run preview:shots -- ./shots
 ```
 
 Seeds a realistic quotation and screenshots the client page (desktop, phone,
-print) and the admin, and reports any browser console errors.
+print) and the admin.

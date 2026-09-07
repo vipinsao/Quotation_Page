@@ -9,7 +9,7 @@ export async function GET() {
   if (!(await isAuthenticated())) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  return NextResponse.json({ quotations: listQuotations() });
+  return NextResponse.json({ quotations: await listQuotations() });
 }
 
 /**
@@ -35,8 +35,8 @@ export async function POST(request: Request) {
     : fresh;
 
   let slug = quotation.slug;
-  while (slugExists(slug)) slug = buildSlug(quotation.client.name);
+  while (await slugExists(slug)) slug = buildSlug(quotation.client.name);
 
-  const saved = insertQuotation({ ...quotation, slug });
+  const saved = await insertQuotation({ ...quotation, slug });
   return NextResponse.json({ quotation: saved }, { status: 201 });
 }

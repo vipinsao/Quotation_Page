@@ -11,7 +11,7 @@ export default async function EditQuotationPage({ params }: { params: Promise<{ 
   if (!(await isAuthenticated())) redirect("/admin/login");
 
   const { id } = await params;
-  const quotation = getQuotationById(id);
+  const quotation = await getQuotationById(id);
   if (!quotation) notFound();
 
   return <Editor initial={quotation} />;

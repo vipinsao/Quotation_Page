@@ -18,12 +18,19 @@ const STATUS_LABELS: Record<QuotationStatus, string> = {
   accepted: "Accepted",
 };
 
+export type StorageStatus = {
+  database: "sqlite" | "postgres";
+  uploads: "blob" | "disk" | "unavailable";
+};
+
 export function QuotationList({
   initial,
   unlocked,
+  storage,
 }: {
   initial: QuotationSummary[];
   unlocked: boolean;
+  storage: StorageStatus;
 }) {
   const router = useRouter();
   const [rows, setRows] = useState(initial);
@@ -121,12 +128,34 @@ export function QuotationList({
 
         {error && <p className="mt-4 text-sm text-red-600">{error}</p>}
 
-        {unlocked && (
-          <p className="mt-4 rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-[0.8rem] text-amber-900">
-            No admin password is set. Fine on your own machine — set <code>ADMIN_PASSWORD</code> in
-            <code> .env</code> before putting this online.
+        <div className="mt-4 space-y-2">
+          {unlocked && (
+            <p className="rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-[0.8rem] text-amber-900">
+              No admin password is set. Fine on your own machine — set <code>ADMIN_PASSWORD</code> in
+              your environment before putting this online.
+            </p>
+          )}
+
+          {storage.uploads === "unavailable" && (
+            <p className="rounded-md border border-red-300 bg-red-50 px-4 py-3 text-[0.8rem] text-red-900">
+              Photo uploads are turned off: this deployment has no file storage. Add a Vercel Blob
+              store so <code>BLOB_READ_WRITE_TOKEN</code> is set. Until then you can still paste
+              image URLs into a quotation.
+            </p>
+          )}
+
+          <p className="text-[0.75rem] text-muted">
+            {storage.database === "postgres"
+              ? "Quotations are stored in Postgres"
+              : "Quotations are stored in a local SQLite file"}
+            {" · "}
+            {storage.uploads === "blob"
+              ? "photos in Vercel Blob"
+              : storage.uploads === "disk"
+                ? "photos on local disk"
+                : "photo uploads unavailable"}
           </p>
-        )}
+        </div>
 
         <ul className="mt-8 space-y-3">
           {rows.length === 0 && (
