@@ -156,6 +156,53 @@ try {
   await pglite.close().catch(() => {});
 }
 
+/* --------------- 3. Blob connected under a prefixed variable name */
+console.log("\nBlob store connected under a prefixed variable name");
+const pglite2 = new PGlite();
+await pglite2.waitReady;
+const pgServer2 = new PGLiteSocketServer({ db: pglite2, port: 5436, host: "127.0.0.1" });
+await pgServer2.start();
+
+try {
+  await withServer(
+    {
+      port: 3214,
+      env: {
+        STORAGE_URL: "postgres://postgres:postgres@127.0.0.1:5436/postgres?sslmode=disable",
+        // Not BLOB_READ_WRITE_TOKEN: the prefix is chosen when the store is
+        // connected, exactly as it is for Postgres. The token's own format is
+        // what identifies it.
+        STORAGE_BLOB_READ_WRITE_TOKEN: "vercel_blob_rw_FakeStoreId_0123456789abcdef",
+      },
+    },
+    async ({ base }) => {
+      const health = await (await fetch(`${base}/api/health`)).json();
+      check("the Blob token is found under a name the code has never seen",
+        health.uploads.configuredVia === "STORAGE_BLOB_READ_WRITE_TOKEN",
+        JSON.stringify(health.uploads));
+      check("uploads switch to the Blob backend", health.uploads.backend === "blob");
+
+      const adminHtml = await (await fetch(`${base}/admin`)).text();
+      check("the admin no longer warns that uploads are off",
+        !adminHtml.includes("Photo uploads are turned off"));
+      check("the admin reports photos go to Blob", adminHtml.includes("photos in Vercel Blob"));
+
+      // The token is fake, so the store must reject it — and that rejection has
+      // to surface as a readable message rather than a crash.
+      const form = new FormData();
+      form.append("file", new File([Buffer.from("x")], "a.png", { type: "image/png" }));
+      const upload = await fetch(`${base}/api/upload`, { method: "POST", body: form });
+      const body = await upload.json().catch(() => ({}));
+      check("a rejected upload returns a readable error, not a crash",
+        upload.status === 502 && /photo store rejected/i.test(body.error || ""),
+        `${upload.status} ${JSON.stringify(body).slice(0, 160)}`);
+    },
+  );
+} finally {
+  await pgServer2.stop().catch(() => {});
+  await pglite2.close().catch(() => {});
+}
+
 const failed = results.filter((r) => !r.ok);
 console.log(`\n${results.length - failed.length}/${results.length} deployment-safety checks passed.`);
 if (failed.length > 0) process.exit(1);

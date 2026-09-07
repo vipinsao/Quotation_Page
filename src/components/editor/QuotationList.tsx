@@ -139,8 +139,8 @@ export function QuotationList({
           {storage.uploads === "unavailable" && (
             <p className="rounded-md border border-red-300 bg-red-50 px-4 py-3 text-[0.8rem] text-red-900">
               Photo uploads are turned off: this deployment has no file storage. Add a Vercel Blob
-              store so <code>BLOB_READ_WRITE_TOKEN</code> is set. Until then you can still paste
-              image URLs into a quotation.
+              store, then <strong>redeploy</strong> — environment variables only reach a new build.
+              Until then you can still paste image URLs into a quotation.
             </p>
           )}
 

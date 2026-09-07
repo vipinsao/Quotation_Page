@@ -16,13 +16,44 @@ export const UPLOAD_EXTENSIONS: Record<string, string> = {
 
 export type UploadBackend = "blob" | "disk" | "unavailable";
 
+/** Every Vercel Blob read-write token starts with this, whatever it is named. */
+const BLOB_TOKEN_PATTERN = /^vercel_blob_rw_/i;
+
+const PREFERRED_BLOB_ENV_VAR = "BLOB_READ_WRITE_TOKEN";
+
+/**
+ * Connecting a Blob store lets you choose the environment-variable prefix, so
+ * the token can arrive as STORAGE_BLOB_READ_WRITE_TOKEN just as easily as the
+ * documented name. The token's own format is unmistakable, so it is found by
+ * value rather than by what someone decided to call it.
+ */
+export function blobTokenSource(): string | null {
+  if (BLOB_TOKEN_PATTERN.test(process.env[PREFERRED_BLOB_ENV_VAR]?.trim() ?? "")) {
+    return PREFERRED_BLOB_ENV_VAR;
+  }
+  return blobTokenCandidates()[0] ?? null;
+}
+
+/** Names of every variable holding a Blob token, for diagnostics. Never values. */
+export function blobTokenCandidates(): string[] {
+  return Object.keys(process.env)
+    .filter((key) => BLOB_TOKEN_PATTERN.test(process.env[key]?.trim() ?? ""))
+    .sort();
+}
+
+export function blobToken(): string | null {
+  const key = blobTokenSource();
+  const value = key ? process.env[key]?.trim() : null;
+  return value || null;
+}
+
 /**
  * Vercel Blob when a token is present, the local disk otherwise. On a
  * serverless host without Blob there is nowhere durable to write, so uploads
  * are reported as unavailable rather than written somewhere that vanishes.
  */
 export function uploadBackend(): UploadBackend {
-  if (process.env.BLOB_READ_WRITE_TOKEN) return "blob";
+  if (blobToken()) return "blob";
   return isServerless() ? "unavailable" : "disk";
 }
 
@@ -59,14 +90,27 @@ export async function saveUpload(file: File): Promise<SaveResult> {
   }
 
   if (backend === "blob") {
-    const { put } = await import("@vercel/blob");
-    const blob = await put(`quotations/${name}`, file, {
-      access: "public",
-      contentType: file.type,
-      // Names are already unique; a second random suffix would only make URLs uglier.
-      addRandomSuffix: false,
-    });
-    return { ok: true, url: blob.url };
+    try {
+      const { put } = await import("@vercel/blob");
+      const blob = await put(`quotations/${name}`, file, {
+        access: "public",
+        contentType: file.type,
+        // The token is passed explicitly: it is not always under the name the
+        // SDK looks for by default.
+        token: blobToken() ?? undefined,
+        // Names are already unique; a second random suffix would only make URLs uglier.
+        addRandomSuffix: false,
+      });
+      return { ok: true, url: blob.url };
+    } catch (error) {
+      return {
+        ok: false,
+        status: 502,
+        error: `The photo store rejected the upload: ${
+          error instanceof Error ? error.message : "unknown error"
+        }`,
+      };
+    }
   }
 
   const dir = uploadDir();

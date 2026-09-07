@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { isAuthenticated } from "@/lib/auth";
 import { getStore, databaseUrlCandidates, databaseUrlSource, isServerless, storeKind, DATABASE_ENV_VARS } from "@/lib/store";
-import { uploadBackend } from "@/lib/storage";
+import { blobTokenCandidates, blobTokenSource, uploadBackend } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
 
@@ -34,7 +34,12 @@ export async function GET() {
       reachable: databaseReachable,
       error: databaseError,
     },
-    uploads: uploadBackend(),
+    uploads: {
+      backend: uploadBackend(),
+      configuredVia: blobTokenSource(),
+      found: blobTokenCandidates(),
+      preferredName: "BLOB_READ_WRITE_TOKEN",
+    },
     ok: databaseReachable,
   });
 }
