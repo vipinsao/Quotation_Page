@@ -17,6 +17,7 @@ export function blankQuotation(overrides: { clientName?: string } = {}): Quotati
       name: "The Wedding Sridha",
       tagline: "Wedding Photography & Cinematography",
       coverUrl: "",
+      coverOverlay: 45,
     },
 
     client: {

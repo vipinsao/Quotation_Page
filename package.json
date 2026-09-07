@@ -8,11 +8,12 @@
     "start": "next start",
     "test": "vitest run",
     "test:e2e": "node scripts/e2e.mjs",
-    "test:all": "vitest run && npm run build && node scripts/e2e.mjs && node scripts/e2e.mjs --backend=postgres && node scripts/e2e-serverless.mjs && node scripts/e2e-browser.mjs",
+    "test:all": "vitest run && npm run build && node scripts/e2e.mjs && node scripts/e2e.mjs --backend=postgres && node scripts/e2e-serverless.mjs && node scripts/e2e-browser.mjs && node scripts/e2e-browser.mjs --deployed-like",
     "preview:shots": "node scripts/preview.mjs",
     "seed": "node scripts/seed.mjs",
     "test:e2e:pg": "node scripts/e2e.mjs --backend=postgres",
-    "test:browser": "node scripts/e2e-browser.mjs"
+    "test:browser": "node scripts/e2e-browser.mjs",
+    "test:browser:deployed": "node scripts/e2e-browser.mjs --deployed-like"
   },
   "dependencies": {
     "@vercel/blob": "^2.8.0",

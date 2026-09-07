@@ -46,6 +46,8 @@ export type Quotation = {
     tagline: string;
     /** Optional cover photo behind the hero. Falls back to the botanical gradient. */
     coverUrl: string;
+    /** How much the cover is darkened, 0–90. Text needs contrast; photos need to be seen. */
+    coverOverlay: number;
   };
 
   client: {

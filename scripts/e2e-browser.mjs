@@ -18,6 +18,12 @@ const PG_PORT = Number(process.env.BROWSER_E2E_PG_PORT || 5435);
 const BASE = `http://127.0.0.1:${PORT}`;
 const PASSWORD = "browser-e2e";
 
+// --deployed-like reproduces the live Vercel setup exactly: a serverless host
+// with Postgres and no Blob store, where file upload is unavailable and the
+// only way to add a photograph is to paste its URL.
+const DEPLOYED_LIKE = process.argv.includes("--deployed-like");
+console.log(`\nBrowser checks — ${DEPLOYED_LIKE ? "deployed-like (serverless, no Blob)" : "local (disk uploads)"}`);
+
 const results = [];
 function check(name, ok, detail = "") {
   results.push({ name, ok: Boolean(ok) });
@@ -42,7 +48,9 @@ const server = spawn("npm", ["run", "start", "--", "--port", String(PORT)], {
     ADMIN_PASSWORD: PASSWORD,
     AUTH_SALT: "browser-e2e",
     DATABASE_URL: `postgres://postgres:postgres@127.0.0.1:${PG_PORT}/postgres?sslmode=disable`,
-    UPLOAD_DIR: path.join(workdir, "uploads"),
+    ...(DEPLOYED_LIKE
+      ? { VERCEL: "1", BLOB_READ_WRITE_TOKEN: "" }
+      : { UPLOAD_DIR: path.join(workdir, "uploads") }),
   },
   stdio: ["ignore", "pipe", "pipe"],
 });
@@ -136,22 +144,101 @@ try {
   check("the edit survives a reload", afterReload.includes("₹1,85,000") && afterReload.includes("Anjali Rao"));
 
   /* -------------------------------------------------------------- upload */
-  group("Uploading a photograph");
   const galleryCard = admin.locator("section").filter({ hasText: "Your work" }).first();
-  await galleryCard.locator('input[type="file"]').first().setInputFiles(
-    path.join(here, "demo-assets", "work-1.jpg"),
-  );
+
+  if (!DEPLOYED_LIKE) {
+    group("Uploading a photograph from disk");
+    await galleryCard.locator('input[type="file"]').first().setInputFiles(
+      path.join(here, "demo-assets", "work-1.jpg"),
+    );
+    await admin.waitForFunction(
+      () => document.querySelectorAll('article img[src*="/uploads/"]').length > 0,
+      null, { timeout: 30000 },
+    );
+    check("the uploaded photo appears in the preview gallery",
+      (await admin.locator('article img[src*="/uploads/"]').count()) > 0);
+    await admin.getByText("Saved", { exact: true }).waitFor({ timeout: 20000 });
+  }
+
+  /* ------------------------------------------------- photographs by URL */
+  // The only route available on a deployment with no Blob store, and the one
+  // path the suite never exercised.
+  group("Adding photographs by pasting a URL");
+
+  const COVER_URL = "https://picsum.photos/seed/coverphoto/1600/900";
+  const GALLERY_URL = "https://picsum.photos/seed/galleryphoto/800/1000";
+
+  const studioCard = admin.locator("section").filter({ hasText: "Studio & cover" }).first();
+  await studioCard.getByLabel("Cover image URL").fill(COVER_URL);
   await admin.waitForFunction(
-    () => document.querySelectorAll('article img[src*="/uploads/"]').length > 0,
-    null, { timeout: 30000 },
+    (url) => Boolean(document.querySelector(`article img[src="${url}"]`)),
+    COVER_URL, { timeout: 15000 },
+  ).catch(() => {});
+  check("a pasted cover URL reaches the preview",
+    (await admin.locator(`article img[src="${COVER_URL}"]`).count()) > 0);
+  check("the cover image actually loads",
+    await admin.locator(`article img[src="${COVER_URL}"]`).first()
+      .evaluate((img) =>
+        img.complete && img.naturalWidth > 0
+          ? true
+          : new Promise((resolve) => {
+              img.addEventListener("load", () => resolve(img.naturalWidth > 0), { once: true });
+              img.addEventListener("error", () => resolve(false), { once: true });
+              setTimeout(() => resolve(img.naturalWidth > 0), 15000);
+            }),
+      ).catch(() => false));
+
+  check("the studio can control how much the cover is darkened",
+    await studioCard.getByLabel("Darken the cover").isVisible().catch(() => false));
+
+  check("the URL field confirms the image loads",
+    await studioCard.getByText("Image loads.").isVisible().catch(() => false));
+
+  await galleryCard.getByRole("button", { name: /Add photo by URL/i }).click();
+  const photoRow = galleryCard.locator("div").filter({ hasText: "Image URL" }).last();
+  await photoRow.getByLabel("Image URL").fill(GALLERY_URL);
+  await photoRow.getByLabel("Caption (optional)").fill("Pasted from Pixieset");
+
+  await admin.waitForFunction(
+    (url) => Boolean(document.querySelector(`article img[src="${url}"]`)),
+    GALLERY_URL, { timeout: 15000 },
+  ).catch(() => {});
+  check("a pasted gallery URL reaches the preview",
+    (await admin.locator(`article img[src="${GALLERY_URL}"]`).count()) > 0);
+
+  group("A link that cannot work says so");
+  await studioCard.getByLabel("Cover image URL").fill("https://www.instagram.com/p/ABC123/");
+  check("an Instagram post link is called out before saving",
+    await studioCard.getByText(/Instagram post links/).isVisible().catch(() => false));
+
+  await studioCard.getByLabel("Cover image URL").fill(
+    "https://drive.google.com/file/d/1AbC_dEf-123/view?usp=sharing",
   );
-  check("the uploaded photo appears in the preview gallery",
-    (await admin.locator('article img[src*="/uploads/"]').count()) > 0);
+  check("a Google Drive share link is converted to a direct one",
+    (await studioCard.getByLabel("Cover image URL").inputValue())
+      === "https://drive.google.com/uc?export=view&id=1AbC_dEf-123");
 
-  await admin.getByText("Saved", { exact: true }).waitFor({ timeout: 20000 });
+  await studioCard.getByLabel("Cover image URL").fill(COVER_URL);
+  await admin.getByText("Saved", { exact: true }).waitFor({ timeout: 25000 });
 
-  const shareSlug = await admin.locator("section").filter({ hasText: "Share link" })
-    .first().getByLabel("Link ending").inputValue();
+  await admin.reload();
+  await admin.locator("article").first().waitFor({ timeout: 20000 });
+  check("the pasted cover survives a reload",
+    (await admin.locator(`article img[src="${COVER_URL}"]`).count()) > 0);
+  check("the pasted gallery photo survives a reload",
+    (await admin.locator(`article img[src="${GALLERY_URL}"]`).count()) > 0);
+  check("the caption survives too",
+    (await admin.locator("article").first().innerText()).includes("Pasted from Pixieset")
+    || (await admin.locator('article img[alt="Pasted from Pixieset"]').count()) > 0);
+
+  // Read the slug through the app's own API using the browser's session, rather
+  // than a DOM selector that a layout change can quietly break.
+  const quotationId = admin.url().split("/").pop();
+  const shareSlug = await admin.evaluate(async (id) => {
+    const response = await fetch(`/api/quotations/${id}`);
+    const payload = await response.json();
+    return payload.quotation.slug;
+  }, quotationId);
   check("the share link is derived from the client's name",
     shareSlug.startsWith("rohit-sharma-"), shareSlug);
 
@@ -172,12 +259,14 @@ try {
   check("the phone sees what the laptop typed", clientText.includes("Rohit Sharma & Anjali Rao"));
   check("including the price", clientText.includes("₹1,85,000"));
   check("including the venue", clientText.includes("Bhilai"));
-  check("and the photograph the studio just uploaded",
-    (await clientPage.locator('img[src*="/uploads/"]').count()) > 0);
+  check("and the pasted cover photograph",
+    (await clientPage.locator(`img[src="${COVER_URL}"]`).count()) > 0);
+  check("and the pasted gallery photograph",
+    (await clientPage.locator(`img[src="${GALLERY_URL}"]`).count()) > 0);
 
-  const photo = clientPage.locator('img[src*="/uploads/"]').first();
-  check("the photo actually loaded, not a broken image",
-    await photo.evaluate((img) => img.naturalWidth > 0));
+  const photo = clientPage.locator(`img[src="${GALLERY_URL}"]`).first();
+  check("the photo actually loaded on the phone, not a broken image",
+    await photo.evaluate((img) => img.naturalWidth > 0).catch(() => false));
 
   group("A later change reaches that device too");
   await admin.locator("section").filter({ hasText: "Client & event" }).first()

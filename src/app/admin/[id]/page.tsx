@@ -4,6 +4,7 @@ import { SetupRequired } from "@/components/editor/SetupRequired";
 import { isAuthenticated } from "@/lib/auth";
 import { getQuotationById } from "@/lib/db";
 import { DATABASE_ENV_VARS, StorageNotConfiguredError } from "@/lib/store";
+import { uploadBackend } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
 
@@ -17,7 +18,7 @@ export default async function EditQuotationPage({ params }: { params: Promise<{ 
   try {
     const quotation = await getQuotationById(id);
     if (!quotation) notFound();
-    return <Editor initial={quotation} />;
+    return <Editor initial={quotation} uploadsEnabled={uploadBackend() !== "unavailable"} />;
   } catch (error) {
     if (error instanceof StorageNotConfiguredError) {
       return <SetupRequired detail={error.message} checked={DATABASE_ENV_VARS} />;

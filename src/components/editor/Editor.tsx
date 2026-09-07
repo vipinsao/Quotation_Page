@@ -3,9 +3,9 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { QuotationView } from "@/components/quotation/QuotationView";
-import { ImageDropZone } from "@/components/editor/ImagePicker";
+import { ImageDropZone, ImageUrlField } from "@/components/editor/ImagePicker";
 import { ListEditor } from "@/components/editor/ListEditor";
-import { Card, LinesField, NumberField, Row, TextAreaField, TextField, Toggle } from "@/components/ui/fields";
+import { Card, LinesField, NumberField, RangeField, Row, TextAreaField, TextField, Toggle } from "@/components/ui/fields";
 import { resolveMilestones, resolveTotal } from "@/lib/compute";
 import { newId } from "@/lib/id";
 import { formatINR, numberToIndianWords } from "@/lib/money";
@@ -24,7 +24,14 @@ const STATUS_LABELS: Record<QuotationStatus, string> = {
   accepted: "Accepted",
 };
 
-export function Editor({ initial }: { initial: Quotation }) {
+export function Editor({
+  initial,
+  uploadsEnabled = true,
+}: {
+  initial: Quotation;
+  /** False when the deployment has no file storage — the URL field still works. */
+  uploadsEnabled?: boolean;
+}) {
   const [q, setQ] = useState<Quotation>(initial);
   const [slugDraft, setSlugDraft] = useState(initial.slug);
   const [slugEdited, setSlugEdited] = useState(false);
@@ -222,9 +229,27 @@ export function Editor({ initial }: { initial: Quotation }) {
               label="Cover photo (optional)"
               hint="Sits behind the client's name. Without one, a deep-green background is used."
               multiple={false}
+              enabled={uploadsEnabled}
               onUploaded={(urls) => patch("studio", { coverUrl: urls[0] ?? "" })}
             />
-            <TextField label="Cover image URL" hint="Or paste a link to an image you host elsewhere." value={q.studio.coverUrl} onChange={(v) => patch("studio", { coverUrl: v })} placeholder="/uploads/… or https://…" />
+            <ImageUrlField
+              label="Cover image URL"
+              hint="Paste the address of a photo you host elsewhere. Google Drive and Dropbox share links are converted automatically."
+              value={q.studio.coverUrl}
+              onChange={(v) => patch("studio", { coverUrl: v })}
+            />
+            {q.studio.coverUrl && (
+              <RangeField
+                label="Darken the cover"
+                hint="Enough to keep the names readable, no more. Watch the preview."
+                min={0}
+                max={90}
+                step={5}
+                value={q.studio.coverOverlay}
+                onChange={(coverOverlay) => patch("studio", { coverOverlay })}
+                format={(v) => `${v}%`}
+              />
+            )}
           </Card>
 
           <Card title="Opening note" description="A short, warm paragraph. Blank lines start a new paragraph.">
@@ -240,6 +265,7 @@ export function Editor({ initial }: { initial: Quotation }) {
             <ImageDropZone
               label="Drag photos here, or choose files"
               hint="JPG, PNG or WebP up to 8 MB each."
+              enabled={uploadsEnabled}
               onUploaded={(urls) =>
                 patch("gallery", {
                   photos: [...q.gallery.photos, ...urls.map((url) => ({ id: newId(), url, caption: "" }))],
@@ -254,14 +280,8 @@ export function Editor({ initial }: { initial: Quotation }) {
               emptyLabel="No photos yet. The gallery section is hidden until you add one."
               renderItem={(photo, patchPhoto) => (
                 <div className="flex gap-3">
-                  <div className="h-20 w-16 shrink-0 overflow-hidden rounded border border-line bg-sage-pale">
-                    {photo.url && (
-                      /* eslint-disable-next-line @next/next/no-img-element */
-                      <img src={photo.url} alt="" className="h-full w-full object-cover" />
-                    )}
-                  </div>
                   <div className="min-w-0 flex-1 space-y-2">
-                    <TextField label="Image URL" value={photo.url} onChange={(url) => patchPhoto({ url })} />
+                    <ImageUrlField label="Image URL" value={photo.url} onChange={(url) => patchPhoto({ url })} />
                     <TextField label="Caption (optional)" value={photo.caption} onChange={(caption) => patchPhoto({ caption })} />
                   </div>
                 </div>

@@ -155,6 +155,43 @@ export function LinesField({
   );
 }
 
+export function RangeField({
+  label,
+  hint,
+  value,
+  onChange,
+  min = 0,
+  max = 100,
+  step = 5,
+  format = (v: number) => `${v}`,
+}: {
+  label: string;
+  hint?: string;
+  value: number;
+  onChange: (value: number) => void;
+  min?: number;
+  max?: number;
+  step?: number;
+  format?: (value: number) => string;
+}) {
+  return (
+    <Field label={label} hint={hint}>
+      <div className="flex items-center gap-3">
+        <input
+          type="range"
+          min={min}
+          max={max}
+          step={step}
+          value={value}
+          onChange={(e) => onChange(Number(e.target.value))}
+          className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-line accent-forest"
+        />
+        <span className="w-14 shrink-0 text-right text-xs tabular-nums text-muted">{format(value)}</span>
+      </div>
+    </Field>
+  );
+}
+
 export function Toggle({
   label,
   hint,

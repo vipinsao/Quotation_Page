@@ -144,6 +144,7 @@ export function normalizeQuotation(input: unknown, existing?: Quotation): Quotat
       name: str(studio.name, base.studio.name),
       tagline: str(studio.tagline, base.studio.tagline),
       coverUrl: str(studio.coverUrl, base.studio.coverUrl),
+      coverOverlay: Math.min(90, Math.max(0, num(studio.coverOverlay, base.studio.coverOverlay ?? 45))),
     },
 
     client: {

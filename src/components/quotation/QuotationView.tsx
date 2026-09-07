@@ -23,9 +23,20 @@ function Hero({ q }: { q: Quotation }) {
             src={q.studio.coverUrl}
             alt=""
             aria-hidden
-            className="absolute inset-0 -z-10 h-full w-full object-cover"
+            className="absolute inset-0 -z-10 h-full w-full object-cover print-exact"
           />
-          <div className="absolute inset-0 -z-10 bg-ink/70" />
+          {/* A flat 70% black hid the photograph almost entirely. The strength is
+              now the studio's choice, and the gradient does the work of keeping
+              the text legible at the top and bottom without flattening the middle. */}
+          <div
+            aria-hidden
+            className="absolute inset-0 -z-10 print-exact"
+            style={{ backgroundColor: `rgba(18, 32, 26, ${(q.studio.coverOverlay ?? 45) / 100})` }}
+          />
+          <div
+            aria-hidden
+            className="absolute inset-0 -z-10 bg-gradient-to-b from-ink/55 via-transparent to-ink/65 print-exact"
+          />
         </>
       ) : (
         <div
