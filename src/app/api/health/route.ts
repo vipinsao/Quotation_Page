@@ -6,6 +6,17 @@ import { blobTokenCandidates, blobTokenSource, uploadBackend } from "@/lib/stora
 export const dynamic = "force-dynamic";
 
 /**
+ * Variable NAMES that look storage-related, so a store that was created but
+ * never connected can be told apart from one connected under a name we did not
+ * expect. Names only — values never leave the server.
+ */
+function storageRelatedNames(): string[] {
+  return Object.keys(process.env)
+    .filter((key) => /(BLOB|STORAGE|POSTGRES|DATABASE|NEON|PG)/i.test(key))
+    .sort();
+}
+
+/**
  * One place to see what a deployment is actually configured with. Behind the
  * admin session, because it names the environment variables that are set.
  */
@@ -40,6 +51,8 @@ export async function GET() {
       found: blobTokenCandidates(),
       preferredName: "BLOB_READ_WRITE_TOKEN",
     },
+    // Diagnostic: what the host actually put in the environment, by name.
+    environmentVariableNames: storageRelatedNames(),
     ok: databaseReachable,
   });
 }
