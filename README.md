@@ -48,7 +48,7 @@ Copy `.env.example` to `.env`. Local development needs none of it.
 | `ADMIN_PASSWORD` | *(empty)* | Empty means the admin is unlocked — fine locally. **Required before this is reachable from the internet.** |
 | `AUTH_SALT` | `the-wedding-sridha` | Changing it signs everyone out. |
 | `DATABASE_URL` | *(unset)* | Postgres. When set, it is used instead of SQLite. `POSTGRES_URL`, `NEON_DATABASE_URL`, `POSTGRES_PRISMA_URL` and the un-pooled variants are accepted too, because that is what the hosts' storage integrations actually set. |
-| `BLOB_READ_WRITE_TOKEN` | *(unset)* | Vercel Blob. When set, photos go there instead of the local disk. |
+| `BLOB_READ_WRITE_TOKEN` | *(unset)* | Vercel Blob. When set, photos go there. Optional — see below. |
 | `DB_PATH` | `./data/quotations.db` | Local SQLite file. Ignored when `DATABASE_URL` is set. |
 | `UPLOAD_DIR` | `./data/uploads` | Local photo directory. Ignored when Blob is configured. |
 
@@ -65,9 +65,11 @@ that happen.
    and connect it. That sets `DATABASE_URL` for you. If you bring your own,
    use the **pooled** connection string. The table is created on first use —
    there is no migration step.
-3. **Add Blob.** Storage → create a Blob store and connect it. That sets
-   `BLOB_READ_WRITE_TOKEN`. Skip this and quotations still work, but the upload
-   button is disabled and you paste image URLs instead — the admin says so.
+3. **Add Blob — optional.** Storage → create a Blob store and connect it.
+   Without it, photographs are stored in Postgres instead and the upload button
+   still works; Blob simply raises the size limit from 3.5 MB to 8 MB and keeps
+   large files out of the database. The prefix you choose for either store does
+   not matter — both credentials are found by the shape of their value.
 4. **Set `ADMIN_PASSWORD`** and `AUTH_SALT` in Settings → Environment
    Variables, for all environments.
 5. Redeploy.
@@ -113,6 +115,11 @@ No Postgres or Blob needed. Mount a persistent disk and point `DB_PATH` and
   `DATABASE_URL`, the app throws instead of falling back to a database that
   will be deleted. Uploads with nowhere durable to go return a 501 that names
   the missing variable.
+- **Photographs go wherever there is somewhere durable.** Vercel Blob when a
+  token is present, otherwise Postgres (`bytea`, capped at 3.5 MB because a
+  serverless function cannot return a larger body), otherwise the local disk in
+  development. The upload button works on any deployment that has a database,
+  so the studio never has to find somewhere to host images.
 - **Uploads live outside `public/`.** Next only serves `public/` as it was at
   build time, so anything uploaded afterwards would 404 in production. Files go
   to `UPLOAD_DIR` and are streamed by `/uploads/[...path]`, which accepts only

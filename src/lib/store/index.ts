@@ -1,5 +1,5 @@
 import path from "node:path";
-import { createPostgresStore } from "./postgres";
+import { createPostgresStore, type PostgresClient } from "./postgres";
 import { createSqliteStore } from "./sqlite";
 import type { QuotationStore } from "./types";
 
@@ -78,6 +78,16 @@ export class StorageNotConfiguredError extends Error {
   }
 }
 
+// Cached alongside the store: the photo store shares the same connection pool
+// rather than opening a second one per serverless instance.
+const globalForClient = globalThis as unknown as { __postgresClient?: PostgresClient };
+
+/** The shared Postgres client, or null when running on SQLite. */
+export async function getPostgresClient(): Promise<PostgresClient | null> {
+  await getStore();
+  return globalForClient.__postgresClient ?? null;
+}
+
 async function build(): Promise<QuotationStore> {
   const url = databaseUrl();
 
@@ -93,6 +103,7 @@ async function build(): Promise<QuotationStore> {
       connectionTimeoutMillis: 10_000,
       ssl: databaseUrl.includes("sslmode=disable") ? undefined : { rejectUnauthorized: false },
     });
+    globalForClient.__postgresClient = pool;
     return createPostgresStore(pool);
   }
 

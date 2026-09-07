@@ -1,10 +1,18 @@
 import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { isServerless } from "@/lib/store";
+import { getPostgresClient, isServerless, storeKind } from "@/lib/store";
+import { saveFile } from "./postgres-files";
 import { uploadDir } from "@/lib/uploads";
 
 export const MAX_UPLOAD_BYTES = 8 * 1024 * 1024; // 8 MB — plenty for a web-sized JPEG.
+
+/**
+ * Serverless functions cap their response body at around 4.5 MB, and a
+ * database-stored photograph is served through one. Anything larger would
+ * upload fine and then fail to display, so it is refused up front.
+ */
+export const MAX_DB_UPLOAD_BYTES = 3.5 * 1024 * 1024;
 
 export const UPLOAD_EXTENSIONS: Record<string, string> = {
   "image/jpeg": ".jpg",
@@ -14,7 +22,7 @@ export const UPLOAD_EXTENSIONS: Record<string, string> = {
   "image/gif": ".gif",
 };
 
-export type UploadBackend = "blob" | "disk" | "unavailable";
+export type UploadBackend = "blob" | "postgres" | "disk" | "unavailable";
 
 /** Every Vercel Blob read-write token starts with this, whatever it is named. */
 const BLOB_TOKEN_PATTERN = /^vercel_blob_rw_/i;
@@ -54,7 +62,16 @@ export function blobToken(): string | null {
  */
 export function uploadBackend(): UploadBackend {
   if (blobToken()) return "blob";
-  return isServerless() ? "unavailable" : "disk";
+  if (!isServerless()) return "disk";
+  // No object storage, but a database is configured — good enough for a
+  // handful of web-sized photographs, and it means the upload button works
+  // without the studio having to wire up a second service.
+  if (storeKind() === "postgres") return "postgres";
+  return "unavailable";
+}
+
+export function uploadLimitBytes(): number {
+  return uploadBackend() === "postgres" ? MAX_DB_UPLOAD_BYTES : MAX_UPLOAD_BYTES;
 }
 
 export type SaveResult =
@@ -67,26 +84,48 @@ export async function saveUpload(file: File): Promise<SaveResult> {
     return { ok: false, status: 415, error: "Please upload a JPG, PNG, WebP, AVIF or GIF image." };
   }
 
-  if (file.size > MAX_UPLOAD_BYTES) {
+  const backend = uploadBackend();
+  const limit = uploadLimitBytes();
+
+  if (file.size > limit) {
     return {
       ok: false,
       status: 413,
-      error: `That image is ${(file.size / 1024 / 1024).toFixed(1)} MB. Please keep it under 8 MB.`,
+      error:
+        `That image is ${(file.size / 1024 / 1024).toFixed(1)} MB. Please keep it under ` +
+        `${(limit / 1024 / 1024).toFixed(1)} MB` +
+        (backend === "postgres" ? " — or connect a Vercel Blob store to raise the limit to 8 MB." : "."),
     };
   }
 
   // The name is generated, never taken from the upload — no path traversal.
   const name = `${randomUUID()}${extension}`;
-  const backend = uploadBackend();
 
   if (backend === "unavailable") {
     return {
       ok: false,
       status: 501,
       error:
-        "Photo uploads are not configured on this deployment. Add a Vercel Blob store " +
-        "(BLOB_READ_WRITE_TOKEN), or paste an image URL instead.",
+        "Photo uploads are not configured on this deployment. Connect a database or a " +
+        "Vercel Blob store, or paste an image URL instead.",
     };
+  }
+
+  if (backend === "postgres") {
+    const client = await getPostgresClient();
+    if (!client) {
+      return { ok: false, status: 503, error: "The database is not reachable right now." };
+    }
+    try {
+      await saveFile(client, name, file.type, Buffer.from(await file.arrayBuffer()));
+      return { ok: true, url: `/uploads/${name}` };
+    } catch (error) {
+      return {
+        ok: false,
+        status: 502,
+        error: `Could not store the photo: ${error instanceof Error ? error.message : "unknown error"}`,
+      };
+    }
   }
 
   if (backend === "blob") {

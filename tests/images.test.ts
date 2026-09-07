@@ -39,6 +39,10 @@ describe("normalizeImageUrl", () => {
 });
 
 describe("imageUrlWarning", () => {
+  it("cautions that Google Drive links usually will not render", () => {
+    expect(imageUrlWarning("https://drive.google.com/uc?export=view&id=abc")).toMatch(/Anyone with the link/);
+  });
+
   it("says nothing about a normal image address", () => {
     expect(imageUrlWarning("https://images.example.com/a.jpg")).toBeNull();
     expect(imageUrlWarning("/uploads/a.jpg")).toBeNull();

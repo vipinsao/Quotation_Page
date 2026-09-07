@@ -87,6 +87,12 @@ await withServer({ port: 3211, env: {} }, async ({ base, workdir }) => {
   check("a client sees a calm message, not setup instructions",
     clientHtml.includes("Just a moment") && !clientHtml.includes("DATABASE_URL"));
 
+  const form = new FormData();
+  form.append("file", new File([Buffer.from("x")], "a.png", { type: "image/png" }));
+  const upload = await fetch(`${base}/api/upload`, { method: "POST", body: form });
+  check("with no database at all, an upload is refused rather than written somewhere temporary",
+    upload.status === 501, `got ${upload.status}`);
+
   check("no SQLite file is created on a host that cannot keep one",
     !fs.existsSync(path.join(workdir, "should-never-be-created.db")));
 });
@@ -123,18 +129,41 @@ try {
       check("quotations save", created.status === 201 && payload.quotation?.id,
         JSON.stringify(payload).slice(0, 200));
 
+      // A real PNG, so what comes back out can be compared byte for byte.
+      const png = Buffer.from(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+        "base64",
+      );
       const form = new FormData();
-      form.append("file", new File([Buffer.from("x")], "a.png", { type: "image/png" }));
+      form.append("file", new File([png], "a.png", { type: "image/png" }));
       const upload = await fetch(`${base}/api/upload`, { method: "POST", body: form });
       const uploadBody = await upload.json().catch(() => ({}));
-      check("an upload is refused rather than written somewhere temporary",
-        upload.status === 501, `got ${upload.status}`);
-      check("the refusal names the variable to add",
-        /BLOB_READ_WRITE_TOKEN/.test(uploadBody.error || ""), uploadBody.error);
+      check("uploads work with only a database — no object storage needed",
+        upload.status === 201 && (uploadBody.url || "").startsWith("/uploads/"),
+        `${upload.status} ${JSON.stringify(uploadBody).slice(0, 160)}`);
+
+      const served = await fetch(`${base}${uploadBody.url}`);
+      const servedBytes = Buffer.from(await served.arrayBuffer());
+      check("the photograph is served back", served.status === 200, `got ${served.status}`);
+      check("with the right content type",
+        (served.headers.get("content-type") || "").includes("image/png"),
+        served.headers.get("content-type") || "");
+      check("byte for byte identical to what was uploaded", servedBytes.equals(png));
+
+      const tooBig = new FormData();
+      tooBig.append("file", new File([Buffer.alloc(4 * 1024 * 1024)], "big.png", { type: "image/png" }));
+      const bigUpload = await fetch(`${base}/api/upload`, { method: "POST", body: tooBig });
+      const bigBody = await bigUpload.json().catch(() => ({}));
+      check("an image too large to serve back through a function is refused up front",
+        bigUpload.status === 413, `got ${bigUpload.status}`);
+      check("and the refusal explains how to raise the limit",
+        /Blob/.test(bigBody.error || ""), bigBody.error);
 
       const adminHtml = await (await fetch(`${base}/admin`)).text();
-      check("the admin warns that uploads are off", adminHtml.includes("Photo uploads are turned off"));
-      check("the admin reports it is using Postgres", adminHtml.includes("stored in Postgres"));
+      check("the admin no longer claims uploads are off",
+        !adminHtml.includes("Photo uploads are turned off"));
+      check("the admin reports photos go to Postgres", adminHtml.includes("photos in Postgres"));
+      check("the admin reports quotations are in Postgres", adminHtml.includes("stored in Postgres"));
 
       // Pasted image URLs are the documented workaround — they must still render.
       const q = payload.quotation;

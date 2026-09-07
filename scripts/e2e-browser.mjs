@@ -146,8 +146,8 @@ try {
   /* -------------------------------------------------------------- upload */
   const galleryCard = admin.locator("section").filter({ hasText: "Your work" }).first();
 
-  if (!DEPLOYED_LIKE) {
-    group("Uploading a photograph from disk");
+  {
+    group(DEPLOYED_LIKE ? "Uploading a photograph (stored in Postgres)" : "Uploading a photograph from disk");
     await galleryCard.locator('input[type="file"]').first().setInputFiles(
       path.join(here, "demo-assets", "work-1.jpg"),
     );
@@ -157,6 +157,17 @@ try {
     );
     check("the uploaded photo appears in the preview gallery",
       (await admin.locator('article img[src*="/uploads/"]').count()) > 0);
+    check("and it is a real image, not a broken one",
+      await admin.locator('article img[src*="/uploads/"]').first()
+        .evaluate((img) =>
+          img.complete && img.naturalWidth > 0
+            ? true
+            : new Promise((resolve) => {
+                img.addEventListener("load", () => resolve(img.naturalWidth > 0), { once: true });
+                img.addEventListener("error", () => resolve(false), { once: true });
+                setTimeout(() => resolve(img.naturalWidth > 0), 15000);
+              }),
+        ).catch(() => false));
     await admin.getByText("Saved", { exact: true }).waitFor({ timeout: 20000 });
   }
 

@@ -38,6 +38,11 @@ export function imageUrlWarning(input: string): string | null {
   if (/^https?:\/\/photos\.(google|app\.goo)\./i.test(url)) {
     return "Google Photos share links can't be shown directly. Download the photo and upload the file instead.";
   }
+  if (/drive\.google\.com/i.test(url)) {
+    // Drive refuses to serve most files as images, whatever the URL form, so
+    // this is a caution rather than a conversion promise.
+    return "Google Drive only serves a photo if the file is shared with \u201cAnyone with the link\u201d, and often not even then. Uploading the file is far more reliable.";
+  }
   if (!/^(https?:)?\/\//i.test(url) && !url.startsWith("/")) {
     return "That doesn't look like a web address. It should start with https://";
   }

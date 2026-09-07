@@ -20,7 +20,7 @@ const STATUS_LABELS: Record<QuotationStatus, string> = {
 
 export type StorageStatus = {
   database: "sqlite" | "postgres";
-  uploads: "blob" | "disk" | "unavailable";
+  uploads: "blob" | "postgres" | "disk" | "unavailable";
 };
 
 export function QuotationList({
@@ -138,9 +138,16 @@ export function QuotationList({
 
           {storage.uploads === "unavailable" && (
             <p className="rounded-md border border-red-300 bg-red-50 px-4 py-3 text-[0.8rem] text-red-900">
-              Photo uploads are turned off: this deployment has no file storage. Add a Vercel Blob
-              store, then <strong>redeploy</strong> — environment variables only reach a new build.
-              Until then you can still paste image URLs into a quotation.
+              Photo uploads are turned off: this deployment has neither a database nor a file
+              store. Until one is connected you can still paste image URLs into a quotation.
+            </p>
+          )}
+
+          {storage.uploads === "postgres" && (
+            <p className="rounded-md border border-line bg-cream px-4 py-3 text-[0.8rem] text-muted">
+              Photographs are stored in your database, so uploads work. Connecting a Vercel Blob
+              store is still worth doing later — it raises the size limit from 3.5&nbsp;MB to
+              8&nbsp;MB and keeps large files out of Postgres.
             </p>
           )}
 
@@ -151,9 +158,11 @@ export function QuotationList({
             {" · "}
             {storage.uploads === "blob"
               ? "photos in Vercel Blob"
-              : storage.uploads === "disk"
-                ? "photos on local disk"
-                : "photo uploads unavailable"}
+              : storage.uploads === "postgres"
+                ? "photos in Postgres"
+                : storage.uploads === "disk"
+                  ? "photos on local disk"
+                  : "photo uploads unavailable"}
           </p>
         </div>
 
